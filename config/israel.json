@@ -1,0 +1,20 @@
+{
+    "timezone" : "Asia/Jerusalem",
+    "days_forward" : 10,
+    "hours_till_first_meeting" : 3,
+    "meeting_length_minutes" : 30, 
+    "meeting_spare_after" : 15,
+    "days" : {
+        "Sun" : [["08:30", "19:00"]],
+        "Mon" : [["08:30", "19:00"]],
+        "Tue" : [["08:30", "19:00"]],
+        "Wed" : [["08:30", "19:00"]],
+        "Thu" : [["08:30", "19:00"]],
+        "Fri" : [],
+        "Sat" : []
+    },
+    "show_timezone" : "Asia/Jerusalem",
+    "show_24hr" : true,
+    "show_timezone_name" : null
+}
+

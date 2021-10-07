@@ -1,0 +1,20 @@
+{
+    "timezone" : "Asia/Jerusalem",
+    "days_forward" : 10,
+    "hours_till_first_meeting" : 3,
+    "meeting_length_minutes" : 30,
+    "meeting_spare_after": 15,
+    "days" : {
+        "Sun" : [],
+        "Mon" : [["15:00", "19:00"], ["21:00", "01:00"]],
+        "Tue" : [["15:00", "19:00"], ["21:00", "01:00"]],
+        "Wed" : [["15:00", "19:00"], ["21:00", "01:00"]],
+        "Thu" : [["15:00", "19:00"], ["21:00", "01:00"]],
+        "Fri" : [],
+        "Sat" : []
+    },
+    "show_timezone" : "America/New_York",
+    "show_24hr" : false,
+    "show_timezone_name" : "ET"
+}
+
