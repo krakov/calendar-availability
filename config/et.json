@@ -15,6 +15,7 @@
     },
     "show_timezone" : "America/New_York",
     "show_24hr" : false,
-    "show_timezone_name" : "ET"
+    "show_timezone_name" : "ET",
+    "week_starts_on_sunday" : false
 }
 

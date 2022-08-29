@@ -15,6 +15,7 @@
     },
     "show_timezone" : "America/Los_Angeles",
     "show_24hr" : false,
-    "show_timezone_name" : "PT"
+    "show_timezone_name" : "PT",
+    "week_starts_on_sunday" : false
 }
 

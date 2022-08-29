@@ -39,7 +39,7 @@ def prep_work_ranges(config):
                 continue
             if start < min_time:
                 start = min_time
-            assert start < end
+            assert start <= end
             ranges.append([start, end])
     return ranges
 
@@ -131,6 +131,10 @@ def combine_ranges(config, free, busy):
     return ranges
 
 
+def _to_weekday(t, config):
+    return (t.weekday() + int(config["week_starts_on_sunday"])) % 7
+
+
 def print_ranges(config, ranges):
     tz = pytz.timezone(config["show_timezone"])
 
@@ -161,10 +165,14 @@ def print_ranges(config, ranges):
         else:
             day_ranges.append([[r0, r1]])
             day = r0.weekday()
+    last_weekday = _to_weekday(day_ranges[0][0][0], config)
     for day_list in day_ranges:
         range_str_list = [
             f"{format_time(r0)} - {format_time(r1)}" for r0, r1 in day_list
         ]
+        if _to_weekday(day_list[0][0], config) < last_weekday:
+            print("Next week:")
+        last_weekday = _to_weekday(day_list[0][0], config)
         day = custom_strftime(day_list[0][0], "%a (%b {S}):")
         print(f" * {day:14s} {', '.join(range_str_list).lower()}")
 
@@ -234,12 +242,13 @@ def main():
         if config["show_timezone_name"] is None
         else f" (all {config['show_timezone_name']})"
     )
-    print(f"Availability for next few days{timezone_str}:")
 
     free = prep_work_ranges(config)
     for chosen_cal in chosen_cals:
         busy = get_busy_ranges(config, service, chosen_cal["id"])
         free = combine_ranges(config, free, busy)
+
+    print(f"Availability for next few days{timezone_str}:")
     print_ranges(config, free)
 
 
