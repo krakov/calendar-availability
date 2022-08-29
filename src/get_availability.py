@@ -2,8 +2,9 @@ from __future__ import print_function
 import datetime
 import pytz
 import json
-import sys
+from tabulate import tabulate
 from google_api import get_calendar_service
+from optparse import OptionParser
 
 
 def prep_work_ranges(config):
@@ -168,13 +169,65 @@ def print_ranges(config, ranges):
         print(f" * {day:14s} {', '.join(range_str_list).lower()}")
 
 
+def get_args():
+    parser = OptionParser()
+    parser.add_option(
+        "-l",
+        "--list",
+        dest="list",
+        help="list calendars",
+        action="store_true",
+        default=False,
+    )
+    parser.add_option(
+        "-c",
+        "--calendar",
+        action="append",
+        dest="cal",
+        help="choose a calendar for busy times (multiple allowed)",
+    )
+    parser.add_option(
+        "-t", "--time_config", dest="conf", help="choose a time configuration"
+    )
+
+    (options, args) = parser.parse_args()
+    if options.list and options.cal:
+        parser.error("options -l and -c are mutually exclusive")
+    if options.conf is None:
+        parser.error("must set time configuration with -t")
+    if options.cal is None and not options.list:
+        parser.error("must set either -c or -l")
+
+    return options
+
+
+def _order_cal_list(cal):
+    return (cal["accessRole"] != "owner", -len(cal["defaultReminders"]), cal["id"])
+
+
 def main():
+    opts = get_args()
+
     service = get_calendar_service()
-
     calendar_list = service.calendarList().list().execute()
-    calendar = calendar_list["items"][0]
 
-    config = json.load(open(sys.argv[1], "r"))
+    chosen_cals = []
+    if opts.cal is not None:
+        for cal in calendar_list["items"]:
+            if cal["id"] in opts.cal:
+                chosen_cals.append(cal)
+        if len(chosen_cals) == 0:
+            print(f"Calendars {opts.cal} not found! Possible calendars are:")
+
+    if len(chosen_cals) == 0 or opts.list:
+        table = [
+            (cal["id"], cal["summary"])
+            for cal in sorted(calendar_list["items"], key=_order_cal_list)
+        ]
+        print(tabulate(table, headers=["Id", "Name"]))
+        return
+
+    config = json.load(open(opts.conf, "r"))
 
     timezone_str = (
         ""
@@ -184,9 +237,10 @@ def main():
     print(f"Availability for next few days{timezone_str}:")
 
     free = prep_work_ranges(config)
-    busy = get_busy_ranges(config, service, calendar["id"])
-    ranges = combine_ranges(config, free, busy)
-    print_ranges(config, ranges)
+    for chosen_cal in chosen_cals:
+        busy = get_busy_ranges(config, service, chosen_cal["id"])
+        free = combine_ranges(config, free, busy)
+    print_ranges(config, free)
 
 
 if __name__ == "__main__":
