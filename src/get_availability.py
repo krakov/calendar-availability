@@ -1,14 +1,47 @@
 from __future__ import print_function
 import datetime
+from multiprocessing.dummy import Value
 import pytz
 import json
 from tabulate import tabulate
 from google_api import get_calendar_service
 from optparse import OptionParser
+from dateutil.parser import parser
+
+_CONFIG_DEFAULT_KEYS = {
+    "days_forward": 14,
+    "hours_till_first_meeting": 3,
+    "meeting_length_minutes": 30,
+    "meeting_spare_after": 0,
+    "show_timezone": "America/Los_Angeles",
+    "show_24hr": False,
+    "show_timezone_name": "PT",
+    "week_starts_on_sunday": False,
+    "local_timezone": "America/Los_Angeles",
+    "days": {
+        "Mon": [["9am", "5pm"]],
+        "Tue": [["9am", "5pm"]],
+        "Wed": [["9am", "5pm"]],
+        "Thu": [["9am", "5pm"]],
+        "Fri": [["9am", "2pm"]],
+        "Sat": [],
+        "Sun": [],
+    },
+}
+
+
+def _parse_timestr(timestr):
+    # Alternative version for just ISO: datetime.time.fromisoformat(timestr)
+    return parser().parse(timestr).time()
 
 
 def prep_work_ranges(config):
-    tz = pytz.timezone(config["timezone"])
+    for key in config.keys():
+        assert key in _CONFIG_DEFAULT_KEYS, f"Unknown key in configuration: {key}"
+    for key, val in _CONFIG_DEFAULT_KEYS.items():
+        config.setdefault(key, val)
+
+    tz = pytz.timezone(config["local_timezone"])
     today = datetime.datetime.now(tz).date()
     min_time = datetime.datetime.now(tz) + datetime.timedelta(
         hours=config["hours_till_first_meeting"]
@@ -22,18 +55,14 @@ def prep_work_ranges(config):
             continue
         for avail_start, avail_end in config["days"][dow]:
             start = tz.localize(
-                datetime.datetime.combine(
-                    day, datetime.time.fromisoformat(avail_start)
-                ),
+                datetime.datetime.combine(day, _parse_timestr(avail_start)),
                 is_dst=None,
             )
             end = tz.localize(
-                datetime.datetime.combine(day, datetime.time.fromisoformat(avail_end)),
+                datetime.datetime.combine(day, _parse_timestr(avail_end)),
                 is_dst=None,
             )
-            if datetime.time.fromisoformat(avail_end) < datetime.time.fromisoformat(
-                avail_start
-            ):
+            if _parse_timestr(avail_end) < _parse_timestr(avail_start):
                 end = end + datetime.timedelta(days=1)
             if end < min_time:
                 continue
@@ -45,7 +74,7 @@ def prep_work_ranges(config):
 
 
 def get_busy_ranges(config, service, calendar_id):
-    tz = pytz.timezone(config["timezone"])
+    tz = pytz.timezone(config["local_timezone"])
 
     # Call the Calendar API
     now = datetime.datetime.now(tz).isoformat()
@@ -56,7 +85,7 @@ def get_busy_ranges(config, service, calendar_id):
         timeMin=now,
         timeMax=end,
         items=[{"id": calendar_id}],
-        timeZone=config["timezone"],
+        timeZone=config["local_timezone"],
     )
     freebusy = service.freebusy().query(body=body).execute()
     ranges = []
@@ -195,18 +224,80 @@ def get_args():
         help="choose a calendar for busy times (multiple allowed)",
     )
     parser.add_option(
-        "-t", "--time_config", dest="conf", help="choose a time configuration"
+        "-t",
+        "--time_config",
+        metavar="FILE",
+        dest="conf",
+        help="choose a configuration JSON file",
+    )
+    parser.add_option(
+        "-o",
+        "--opt",
+        action="append",
+        dest="opt",
+        metavar="OPTNAME=VALUE",
+        help="override a configuration option (multiple allowed), use OPT=VAL format. See -O for possible options",
+    )
+    parser.add_option(
+        "-O",
+        "--list-config-options",
+        dest="list_conf_options",
+        help="list possible configuration options",
+        action="store_true",
+        default=False,
     )
 
     (options, args) = parser.parse_args()
+
+    if options.list_conf_options:
+        print(
+            tabulate(
+                [[key, str(val)] for key, val in _CONFIG_DEFAULT_KEYS.items()],
+                headers=["Option name", "Default value"],
+                maxcolwidths=[None, 50],
+            )
+        )
+        return None
+
+    conf_override = {}
+    if options.opt:
+        for opt_entry in options.opt:
+            if "=" not in opt_entry:
+                parser.error(
+                    "Any configuration option should be provided as OPTNAME=VALUE"
+                )
+            name, val_str = opt_entry.split("=")
+            if name not in _CONFIG_DEFAULT_KEYS:
+                parser.error(f"Unknown option {name}, use -O to see possible options")
+            try:
+                if isinstance(_CONFIG_DEFAULT_KEYS[name], (dict, list)):
+                    val = json.loads(val_str)
+                elif isinstance(_CONFIG_DEFAULT_KEYS[name], bool):
+                    try:
+                        val = int(val_str)
+                    except ValueError:
+                        try:
+                            val = {"false": False, "true": True}[val_str.lower()]
+                        except KeyError:
+                            parser.error(
+                                f"Bad type for option {name}, should be like a boolean, but is '{val_str}'"
+                            )
+                    val = bool(val)
+                else:
+                    val = type(_CONFIG_DEFAULT_KEYS[name])(val_str)
+                conf_override[name] = val
+            except ValueError as e:
+                parser.error(
+                    f"Bad type for option {name}, should be like '{_CONFIG_DEFAULT_KEYS[name]}' but is '{val_str}'. Error is: {e}"
+                )
+
     if options.list and options.cal:
         parser.error("options -l and -c are mutually exclusive")
-    if options.conf is None:
-        parser.error("must set time configuration with -t")
+    # if options.conf is None:
+    #    parser.error("must set time configuration with -t")
     if options.cal is None and not options.list:
         parser.error("must set either -c or -l")
-
-    return options
+    return options, conf_override
 
 
 def _order_cal_list(cal):
@@ -214,20 +305,26 @@ def _order_cal_list(cal):
 
 
 def main():
-    opts = get_args()
+    opts, conf_override = get_args()
+    if opts is None:
+        return
 
     service = get_calendar_service()
     calendar_list = service.calendarList().list().execute()
 
     chosen_cals = []
+    not_found = []
     if opts.cal is not None:
-        for cal in calendar_list["items"]:
-            if cal["id"] in opts.cal:
-                chosen_cals.append(cal)
-        if len(chosen_cals) == 0:
-            print(f"Calendars {opts.cal} not found! Possible calendars are:")
+        calendar_by_ids = {cal["id"]: cal for cal in calendar_list["items"]}
+        for cal in opts.cal:
+            if cal not in calendar_by_ids:
+                not_found.append(cal)
+            else:
+                chosen_cals.append(calendar_by_ids[cal])
+        if len(not_found) > 0:
+            print(f"Calendars {not_found} not found! Possible calendars are:")
 
-    if len(chosen_cals) == 0 or opts.list:
+    if len(not_found) > 0 or opts.list:
         table = [
             (cal["id"], cal["summary"])
             for cal in sorted(calendar_list["items"], key=_order_cal_list)
@@ -235,7 +332,11 @@ def main():
         print(tabulate(table, headers=["Id", "Name"]))
         return
 
-    config = json.load(open(opts.conf, "r"))
+    if opts.conf:
+        config = json.load(open(opts.conf, "r"))
+    else:
+        config = _CONFIG_DEFAULT_KEYS.copy()
+    config.update(conf_override)
 
     timezone_str = (
         ""

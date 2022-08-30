@@ -1,6 +1,6 @@
 {
-    "timezone" : "Asia/Jerusalem",
-    "days_forward" : 10,
+    "local_timezone" : "Asia/Jerusalem",
+    "days_forward" : 14,
     "hours_till_first_meeting" : 3,
     "meeting_length_minutes" : 30,
     "meeting_spare_after": 15,
