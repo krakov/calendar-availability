@@ -12,6 +12,7 @@ _CONFIG_DEFAULT_KEYS = {
     "days_forward": 14,
     "hours_till_first_meeting": 3,
     "meeting_length_minutes": 30,
+    "meeting_spare_before": 0,
     "meeting_spare_after": 0,
     "show_timezone": "America/Los_Angeles",
     "show_24hr": False,
@@ -90,7 +91,9 @@ def get_busy_ranges(config, service, calendar_id):
     freebusy = service.freebusy().query(body=body).execute()
     ranges = []
     for r in freebusy["calendars"][calendar_id]["busy"]:
-        start = datetime.datetime.fromisoformat(r["start"])
+        start = datetime.datetime.fromisoformat(r["start"]) - datetime.timedelta(
+            minutes=config["meeting_spare_before"]
+        )
         end = datetime.datetime.fromisoformat(r["end"]) + datetime.timedelta(
             minutes=config["meeting_spare_after"]
         )
