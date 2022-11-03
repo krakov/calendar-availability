@@ -19,11 +19,8 @@ def get_calendar_service(token_file="token.json", cred_file="client_secret.json"
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(cred_file, SCOPES)
-            creds = flow.run_local_server()
+        flow = InstalledAppFlow.from_client_secrets_file(cred_file, SCOPES)
+        creds = flow.run_local_server()
         # Save the credentials for the next run
         with open(token_file, "w") as token:
             token.write(creds.to_json())
